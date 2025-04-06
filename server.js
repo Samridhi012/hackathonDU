@@ -2,6 +2,10 @@ const express = require('express');
 const dotenv = require('dotenv');
 const { Pool } = require('pg');
 //const multer = require('multer');
+const bodyParser = require('body-parser');
+app.use(bodyParser.json());
+
+const { spawn } = require('child_process');
 
 dotenv.config();
 
@@ -43,20 +47,8 @@ app.get('/', (req, res) => {
     res.send('Welcome to the AI Career Coach Dashboard!');
 });
 
-// //route 2
-// // Defining resume upload route
-// app.post('/api/resumes/upload', upload.single('resume'), (req, res) => {
-//     if (!req.file) {
-//       return res.status(400).send('No resume file uploaded.');
-//     }
-//     // here, 'req.file' contains information about the uploaded file
-//     console.log('Uploaded file:', req.file);
-//     // we can now process the file (e.g., save it, extract text, etc.)
-//     res.send('Resume uploaded successfully!');
-//   });
-
-//route 3
-//saving user information in database
+//route 2
+//saving user information in database for COVER LETTER
 app.post('/api/cover-letter/generate', express.json(), async (req, res) => {
     const {
       linkedinUrl,
@@ -109,6 +101,99 @@ app.post('/api/cover-letter/generate', express.json(), async (req, res) => {
       console.error('Error storing cover letter input:', error);
       res.status(500).send('Error storing cover letter input.');
     }
+});
+
+//route 3
+//route to handle INDUSTRY INSIGHTS
+app.post('/api/industry-insights/generate-path', express.json(), async (req, res) => {
+  const { destination, currentLearningPath } = req.body;
+
+  if (!destination || !currentLearningPath) {
+    return res.status(400).send('Please provide both your destination and current learning path.');
+  }
+
+  //generating remaining learning path
+  const generatedLearningPath = generateLearningPath(destination, currentLearningPath);
+
+  if (generatedLearningPath) {
+    res.json({ learningPath: generatedLearningPath });
+  } else {
+    res.status(404).send('Could not generate a learning path based on the input.');
+  }
+});
+
+//route 4
+//connecting backend to ML code
+app.post('/api/generate-documents', async (req, res) => {
+  const {
+    name,
+    email,
+    mobile,
+    linkedin,
+    github,
+    portfolio,
+    skill_set,
+    professional_summary,
+    education,
+    projects,
+    extra_curricular,
+    soft_skills,
+    job_title,
+    job_description,
+  } = req.body;
+
+  // Construct the arguments to pass to the Python script
+  const pythonScriptPath = 'path/to/your/script.py'; // Replace with the actual path to your Python script
+
+  const pythonProcess = spawn('python', [
+    pythonScriptPath,
+    JSON.stringify({ // Pass the input data as a JSON string argument
+      name,
+      email,
+      mobile,
+      linkedin,
+      github,
+      portfolio,
+      skill_set,
+      professional_summary,
+      education,
+      projects,
+      extra_curricular,
+      soft_skills,
+      job_title,
+      job_description,
+    }),
+  ]);
+
+  let outputData = '';
+  let errorData = '';
+
+  // Collect the output from the Python script
+  pythonProcess.stdout.on('data', (data) => {
+    outputData += data.toString();
+  });
+
+  // Collect any errors from the Python script
+  pythonProcess.stderr.on('data', (data) => {
+    errorData += data.toString();
+  });
+
+  // Handle the completion of the Python script
+  pythonProcess.on('close', (code) => {
+    if (code === 0) {
+      try {
+        const result = JSON.parse(outputData); // Assuming your Python script returns JSON
+        res.json(result);
+      } catch (error) {
+        console.error('Error parsing Python output:', error);
+        res.status(500).send('Error processing the generated documents.');
+      }
+    } else {
+      console.error('Python script execution failed with code:', code);
+      console.error('Python error output:', errorData);
+      res.status(500).send('Error generating documents.');
+    }
+  });
 });
 
 app.listen(port, () => {
